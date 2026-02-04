@@ -1,0 +1,8 @@
+streamlit
+opencv-python-headless
+numpy
+pandas
+fpdf
+Pillow
+psycopg2-binary
+sqlalchemy
