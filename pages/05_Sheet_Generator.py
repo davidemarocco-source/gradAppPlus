@@ -220,7 +220,14 @@ if st.button("Generate Answer Sheet"):
     pdf = create_sheet(num_q, exam_title, mcq_choices, question_data=q_data)
     
     # Save to buffer
-    pdf_output = pdf.output(dest='S').encode('latin-1')
+    # Use latin-1 with ignore to avoid crashing on special characters, 
+    # or better: ensure the content itself is clean.
+    try:
+        pdf_output = pdf.output(dest='S').encode('latin-1')
+    except UnicodeEncodeError:
+        # Fallback if there are characters FPDF core fonts can't handle
+        pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
+    
     b64 = base64.b64encode(pdf_output).decode()
     href = f'<a href="data:application/pdf;base64,{b64}" download="answer_sheet.pdf">Download Answer Sheet (OMR)</a>'
     st.markdown(href, unsafe_allow_html=True)
@@ -230,7 +237,11 @@ if st.button("Generate Question Booklet"):
     q_data = st.session_state.get('gen_question_data')
     if q_data and isinstance(next(iter(q_data.values())), dict) and "text" in next(iter(q_data.values())):
         pdf = create_booklet(q_data, exam_title)
-        pdf_output = pdf.output(dest='S').encode('latin-1')
+        try:
+            pdf_output = pdf.output(dest='S').encode('latin-1')
+        except UnicodeEncodeError:
+            pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
+            
         b64 = base64.b64encode(pdf_output).decode()
         href = f'<a href="data:application/pdf;base64,{b64}" download="question_booklet.pdf">Download Question Booklet</a>'
         st.markdown(href, unsafe_allow_html=True)
