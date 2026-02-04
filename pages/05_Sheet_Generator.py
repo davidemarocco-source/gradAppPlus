@@ -61,6 +61,28 @@ with st.sidebar:
 
 st.divider()
 
+def clean_text(text):
+    """
+    Sanitize text for FPDF core fonts (Latin-1).
+    Replaces common Unicode characters with ASCII equivalents.
+    """
+    if not isinstance(text, str):
+        return str(text)
+    
+    # Common replacements
+    replacements = {
+        '\u2018': "'", '\u2019': "'",  # Smart quotes
+        '\u201c': '"', '\u201d': '"',  # Smart double quotes
+        '\u2013': '-', '\u2014': '-',  # En/Em dashes
+        '\u2026': '...',               # Ellipsis
+        '\xa0': ' ',                   # Non-breaking space
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+        
+    # Final pass: encode to latin-1 with replace and decode back
+    return text.encode('latin-1', 'replace').decode('latin-1')
+
 def create_sheet(num_questions=20, exam_name="Exam", mcq_choices=5, question_data=None):
     pdf = FPDF()
     pdf.add_page()
@@ -79,7 +101,7 @@ def create_sheet(num_questions=20, exam_name="Exam", mcq_choices=5, question_dat
     header_x = margin + 15
     pdf.set_xy(header_x, margin)
     pdf.set_font("Helvetica", 'B', 16)
-    pdf.cell(100, 8, exam_name.upper(), ln=1)
+    pdf.cell(100, 8, clean_text(exam_name.upper()), ln=1)
     pdf.set_font("Helvetica", size=10)
     pdf.set_xy(header_x, margin + 8)
     pdf.cell(100, 8, f"NAME: {'_'*35}  DATE: {'_'*12}", ln=1)
@@ -177,7 +199,7 @@ def create_booklet(question_data, exam_name="Exam"):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_font("Helvetica", 'B', 16)
-    pdf.cell(0, 10, exam_name, ln=True, align='C')
+    pdf.cell(0, 10, clean_text(exam_name), ln=True, align='C')
     pdf.ln(10)
     
     pdf.set_font("Helvetica", size=11)
@@ -191,14 +213,14 @@ def create_booklet(question_data, exam_name="Exam"):
             continue
             
         pdf.set_font("Helvetica", 'B', 11)
-        pdf.multi_cell(0, 7, f"Question {q_num}: {q['text']}")
+        pdf.multi_cell(0, 7, clean_text(f"Question {q_num}: {q['text']}"))
         pdf.ln(2)
         
         pdf.set_font("Helvetica", size=10)
         if q["type"] == "MCQ" and "options" in q:
             for i, opt in enumerate(q["options"]):
                 letter = chr(65 + i)
-                pdf.multi_cell(0, 6, f"  {letter}) {opt}")
+                pdf.multi_cell(0, 6, clean_text(f"  {letter}) {opt}"))
         elif q["type"] == "Numeric":
             pdf.multi_cell(0, 6, "  (Write your numerical answer in the box on the answer sheet)")
             
