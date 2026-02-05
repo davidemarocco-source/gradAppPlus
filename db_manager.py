@@ -139,6 +139,17 @@ def get_exams_by_class(class_id):
     res = conn.query("SELECT id, name, date, parent_id FROM exams WHERE class_id=:id", params={"id": class_id}, ttl=0)
     return res.values.tolist()
 
+def update_exam(exam_id, name=None, date=None, answer_key=None):
+    conn = get_connection()
+    with conn.session as s:
+        if name:
+            s.execute(text("UPDATE exams SET name=:name WHERE id=:id"), {"name": name, "id": exam_id})
+        if date:
+            s.execute(text("UPDATE exams SET date=:date WHERE id=:id"), {"date": date, "id": exam_id})
+        if answer_key:
+            s.execute(text("UPDATE exams SET answer_key=:key WHERE id=:id"), {"key": json.dumps(answer_key), "id": exam_id})
+        s.commit()
+
 def get_exam_details(exam_id):
     conn = get_connection()
     res = conn.query("SELECT id, name, class_id, date, answer_key, mcq_choices, parent_id FROM exams WHERE id=:id", params={"id": exam_id}, ttl=0)
