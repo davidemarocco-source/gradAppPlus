@@ -91,8 +91,13 @@ if image_file:
             temp_path = "temp_scan.jpg"
             cv2.imwrite(temp_path, image)
             
-            num_qs = len(answer_key)
-            result = omr_engine.process_exam(temp_path, num_questions=num_qs, mcq_choices=mcq_choices, question_data=answer_key)
+            # Determine layout question count (if master is empty, use first version's count)
+            num_qs_layout = len(answer_key)
+            if num_qs_layout == 0 and available_versions:
+                v1_key = json.loads(available_versions[0][3])
+                num_qs_layout = len(v1_key)
+                
+            result = omr_engine.process_exam(temp_path, num_questions=num_qs_layout, mcq_choices=mcq_choices, question_data=answer_key)
             
             st.session_state['scan_result'] = result
             st.session_state['manual_student_id'] = None # Reset manual override
