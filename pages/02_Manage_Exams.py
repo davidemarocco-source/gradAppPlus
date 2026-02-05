@@ -126,8 +126,6 @@ if selected_view_class == "All":
 else:
     exams = db_manager.get_exams_by_class(class_options[selected_view_class])
     if exams:
-    exams = db_manager.get_exams_by_class(class_options[selected_view_class])
-    if exams:
         # Separate master exams (or independent ones) from versions
         masters = [e for e in exams if e[3] is None]
         versions = [e for e in exams if e[3] is not None]
