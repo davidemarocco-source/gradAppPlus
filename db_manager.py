@@ -33,7 +33,8 @@ def init_db():
                         class_id INTEGER REFERENCES classes(id),
                         date TEXT,
                         answer_key TEXT,
-                        mcq_choices INTEGER DEFAULT 5
+                        mcq_choices INTEGER DEFAULT 5,
+                        parent_id INTEGER REFERENCES exams(id)
                     )'''))
         
         # Results Table
@@ -50,6 +51,7 @@ def init_db():
         # Migration: Add mcq_choices if it doesn't exist
         try:
             s.execute(text("ALTER TABLE exams ADD COLUMN IF NOT EXISTS mcq_choices INTEGER DEFAULT 5"))
+            s.execute(text("ALTER TABLE exams ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES exams(id)"))
         except Exception:
             # Column might already exist or DB might not support IF NOT EXISTS in ALTER (though Postgres does)
             pass
@@ -122,12 +124,12 @@ def get_student_by_omr(class_id, omr_id):
     return res.iloc[0].tolist() if not res.empty else None
 
 # --- Exams ---
-def create_exam(name, class_id, date, answer_key, mcq_choices=5):
+def create_exam(name, class_id, date, answer_key, mcq_choices=5, parent_id=None):
     conn = get_connection()
     key_json = json.dumps(answer_key)
     with conn.session as s:
-        res = s.execute(text("INSERT INTO exams (name, class_id, date, answer_key, mcq_choices) VALUES (:name, :cid, :date, :key, :choices) RETURNING id"),
-                  {"name": name, "cid": class_id, "date": str(date), "key": key_json, "choices": mcq_choices})
+        res = s.execute(text("INSERT INTO exams (name, class_id, date, answer_key, mcq_choices, parent_id) VALUES (:name, :cid, :date, :key, :choices, :pid) RETURNING id"),
+                  {"name": name, "cid": class_id, "date": str(date), "key": key_json, "choices": mcq_choices, "pid": parent_id})
         exam_id = res.fetchone()[0]
         s.commit()
     return exam_id
@@ -139,8 +141,13 @@ def get_exams_by_class(class_id):
 
 def get_exam_details(exam_id):
     conn = get_connection()
-    res = conn.query("SELECT id, name, class_id, date, answer_key, mcq_choices FROM exams WHERE id=:id", params={"id": exam_id}, ttl=0)
+    res = conn.query("SELECT id, name, class_id, date, answer_key, mcq_choices, parent_id FROM exams WHERE id=:id", params={"id": exam_id}, ttl=0)
     return res.iloc[0].tolist() if not res.empty else None
+
+def get_exam_versions(parent_id):
+    conn = get_connection()
+    res = conn.query("SELECT id, name, date, answer_key, mcq_choices FROM exams WHERE parent_id=:pid ORDER BY name ASC", params={"pid": parent_id}, ttl=0)
+    return res.values.tolist()
 
 # --- Results ---
 def save_result(exam_id, student_id, score, answers, image_path):

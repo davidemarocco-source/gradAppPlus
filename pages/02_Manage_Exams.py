@@ -49,6 +49,7 @@ with st.expander("Import GIFT File", expanded=False):
     gift_name = st.text_input("GIFT Exam Name", placeholder="e.g. Psychology Final")
     gift_class = st.selectbox("Class for GIFT", list(class_options.keys()), key="gift_class")
     gift_date = st.date_input("Date for GIFT", datetime.date.today(), key="gift_date")
+    num_versions = st.number_input("Number of Versions", 1, 10, value=1)
     gift_file = st.file_uploader("Upload .gift file", type=["gift", "txt"])
     
     if st.button("Process & Shuffle GIFT"):
@@ -60,17 +61,26 @@ with st.expander("Import GIFT File", expanded=False):
             if not raw_questions:
                 st.error("No questions found in file. Please check GIFT format.")
             else:
-                shuffled_exam = gift_parser.shuffle_exam(raw_questions)
-                # Convert to the format expected by db_manager (1-based keys for OMR)
-                # And also store the rich data for booklet generation
-                final_key = {}
-                for i, q in enumerate(shuffled_exam):
-                    # We store the whole question object in the answer key 
-                    # so we can reconstruct the booklet later
-                    final_key[i+1] = q
-                
-                db_manager.create_exam(gift_name, class_options[gift_class], gift_date, final_key)
-                st.success(f"Exam '{gift_name}' created with {len(shuffled_exam)} shuffled questions!")
+                if num_versions == 1:
+                    shuffled_exam = gift_parser.shuffle_exam(raw_questions)
+                    final_key = {i+1: q for i, q in enumerate(shuffled_exam)}
+                    db_manager.create_exam(gift_name, class_options[gift_class], gift_date, final_key)
+                    st.success(f"Exam '{gift_name}' created!")
+                else:
+                    # Create a Master record first (optional, but good for grouping)
+                    # We'll use the parent_id to link them.
+                    master_id = db_manager.create_exam(f"{gift_name} (Master)", class_options[gift_class], gift_date, {}, parent_id=None)
+                    
+                    for v in range(num_versions):
+                        version_letter = chr(65 + v)
+                        version_name = f"{gift_name} (Version {version_letter})"
+                        shuffled_exam = gift_parser.shuffle_exam(raw_questions)
+                        final_key = {i+1: q for i, q in enumerate(shuffled_exam)}
+                        # Store which version index this is (0 for A, 1 for B, etc.)
+                        # Actually, we can just use the name or another field, but let's keep it simple.
+                        db_manager.create_exam(version_name, class_options[gift_class], gift_date, final_key, parent_id=master_id)
+                    
+                    st.success(f"Created {num_versions} versions of '{gift_name}'!")
                 st.rerun()
         else:
             st.error("Please upload a file")

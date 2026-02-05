@@ -35,7 +35,16 @@ selected_exam_id = exam_opts[selected_exam_label]
 
 # Load Exam Details (Key)
 exam_details = db_manager.get_exam_details(selected_exam_id)
-# id, name, class_id, date, answer_key, mcq_choices
+# id, name, class_id, date, answer_key, mcq_choices, parent_id
+master_id = exam_details[6]
+is_version = master_id is not None
+
+# If this is a master or a version, we might need to swap the key based on the scan
+available_versions = []
+if "(Master)" in exam_details[1] or is_version:
+    pid = master_id if is_version else selected_exam_id
+    available_versions = db_manager.get_exam_versions(pid)
+
 answer_key = json.loads(exam_details[4]) 
 mcq_choices = exam_details[5]
 
@@ -97,9 +106,34 @@ if 'scan_result' in st.session_state and st.session_state['scan_result']:
         st.image(result["warped_image"], caption="Warped View", channels="BGR")
     
     with col2:
-        st.subheader("Results")
         omr_id = result.get("omr_id")
+        version_idx = result.get("version_idx")
+        version_letter = chr(65 + version_idx) if version_idx is not None else "?"
+        
         st.write(f"**Detected OMR ID:** {omr_id}")
+        st.write(f"**Detected Version:** {version_letter}")
+        
+        # --- Version Switching Logic ---
+        current_answer_key = answer_key
+        current_exam_id = selected_exam_id
+        
+        if available_versions and version_idx is not None:
+            # Try to find the version matching the detected letter
+            target_name_part = f"(Version {version_letter})"
+            matched_version = None
+            for v in available_versions:
+                if target_name_part in v[1]:
+                    matched_version = v
+                    break
+            
+            if matched_version:
+                st.info(f"Using key for: **{matched_version[1]}**")
+                current_answer_key = json.loads(matched_version[3])
+                current_exam_id = matched_version[0]
+            else:
+                st.warning(f"Could not find a specific exam record for Version {version_letter}. Using the currently selected exam.")
+        elif available_versions and version_idx is None:
+            st.warning("No version detected on sheet. Using the currently selected exam record.")
         
         student_id = None
         
@@ -137,7 +171,7 @@ if 'scan_result' in st.session_state and st.session_state['scan_result']:
         graded_details = {}
         idx_to_char = {0: "A", 1: "B", 2: "C", 3: "D", 4: "E"}
         
-        for q_str, key_val in answer_key.items():
+        for q_str, key_val in current_answer_key.items():
             q_idx = int(q_str)
             
             # Handle new format {"ans": "...", "type": "..."} vs old format "..."
@@ -172,7 +206,7 @@ if 'scan_result' in st.session_state and st.session_state['scan_result']:
         
         if st.button("Save Grade"):
             # Use original student_id (either matched or selected from dropdown)
-            db_manager.save_result(selected_exam_id, student_id, score, graded_details, "scan.jpg")
+            db_manager.save_result(current_exam_id, student_id, score, graded_details, "scan.jpg")
             st.success("Saved to Database!")
             # Clear result after saving to prevent double submission
             st.session_state['scan_result'] = None

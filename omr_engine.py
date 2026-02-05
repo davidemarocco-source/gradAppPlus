@@ -295,6 +295,27 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
     student_id_str = "".join(id_digits)
     omr_id = int(student_id_str) if "?" not in student_id_str else None
     
+    # --- 1b. Process Version (A-E) ---
+    v_start_x = 110
+    v_start_y = 30
+    v_intensities = []
+    v_centers = []
+    for r in range(5):
+        bubble_y = v_start_y + (r * 8)
+        px, py = to_px(v_start_x + 7 + 2.75, bubble_y + 2.75)
+        intensity, center = sample_bubble_hybrid(warped_gray, px, py, search_r=5, sample_r=5)
+        v_intensities.append(intensity)
+        v_centers.append(center)
+        
+    v_min_idx = np.argmin(v_intensities)
+    v_min_val = v_intensities[v_min_idx]
+    v_avg_val = np.mean(v_intensities)
+    
+    version_idx = None
+    if v_min_val < (v_avg_val * 0.88):
+        version_idx = v_min_idx
+        all_bubble_centers.append(v_centers[v_min_idx])
+    
     # --- 2. Process Answer Grid ---
     questions_per_col = (num_questions + num_cols - 1) // num_cols
     grid_width_mm = num_cols * (80 if num_cols==1 else (75 if num_cols==2 else 60))
@@ -349,5 +370,6 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
         "warped_image": warped,
         "debug_image": None,
         "omr_id": omr_id,
+        "version_idx": version_idx, # 0=A, 1=B, etc.
         "answers": final_answers
     }

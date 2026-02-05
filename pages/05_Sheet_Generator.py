@@ -128,6 +128,28 @@ def create_sheet(num_questions=20, exam_name="Exam", mcq_choices=5, question_dat
             pdf.set_xy(bx, by)
             pdf.cell(bubble_r, bubble_r, str(row), align='C')
             
+    # 2b. Version Selection (Y=30, next to ID)
+    v_start_x = 110
+    v_start_y = 30
+    pdf.set_font("Helvetica", 'B', 9)
+    pdf.set_xy(v_start_x, v_start_y - 6)
+    pdf.cell(20, 5, "VERSION", ln=1, align='C')
+    
+    version_letters = ['A', 'B', 'C', 'D', 'E']
+    for row in range(5):
+        bx = v_start_x + 7
+        by = v_start_y + (row * bubble_gap_y)
+        pdf.ellipse(bx, by, bubble_r, bubble_r)
+        pdf.set_font("Helvetica", size=8)
+        pdf.set_xy(bx, by)
+        pdf.cell(bubble_r, bubble_r, version_letters[row], align='C')
+        
+        # Proactively fill if version info is in exam_name
+        if f"VERSION {version_letters[row]}" in exam_name.upper():
+            pdf.set_fill_color(0, 0, 0)
+            pdf.ellipse(bx + 0.5, by + 0.5, bubble_r - 1, bubble_r - 1, 'F')
+            pdf.set_fill_color(0, 0, 0) # Reset just in case
+            
     # 3. Answers Grid (Y=115) - Tighter thresholds for compactness
     start_y = 115
     if num_questions <= 12:
@@ -199,9 +221,9 @@ def create_booklet(question_data, exam_name="Exam"):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Helvetica", 'B', 10) 
-    pdf.cell(0, 8, clean_text(exam_name), ln=True, align='C')
-    pdf.ln(3) 
+    pdf.set_font("Helvetica", 'B', 14) 
+    pdf.cell(0, 10, clean_text(exam_name), ln=True, align='C')
+    pdf.ln(5) 
     
     pdf.set_font("Helvetica", size=9) 
     
