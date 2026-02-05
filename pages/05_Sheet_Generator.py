@@ -4,6 +4,8 @@ import base64
 import db_manager
 import json
 import re
+import zipfile
+import io
 
 st.set_page_config(page_title="Generate Sheet", page_icon="🖨️")
 st.title("🖨️ Answer Sheet Generator")
@@ -140,9 +142,9 @@ def create_sheet(num_questions=20, exam_name="Exam", mcq_choices=5, question_dat
             pdf.set_xy(bx, by)
             pdf.cell(bubble_r, bubble_r, str(row), align='C')
             
-    # 2b. Version Selection (Y=30, next to ID)
+    # 2b. Version Selection (Y=40, moved down as requested)
     v_start_x = 110
-    v_start_y = 30
+    v_start_y = 40
     pdf.set_font("Helvetica", 'B', 9)
     pdf.set_xy(v_start_x, v_start_y - 6)
     pdf.cell(20, 5, "VERSION", ln=1, align='C')
@@ -327,51 +329,101 @@ if st.session_state.get('gen_versions'):
         st.rerun()
 
 if st.button("Generate Answer Sheet"):
-    q_data = st.session_state.get('gen_question_data')
-    pdf = create_sheet(num_q, exam_title, mcq_choices, question_data=q_data)
+    versions = st.session_state.get('gen_versions', [])
     
-    # Save to buffer
-    # Use latin-1 with ignore to avoid crashing on special characters, 
-    # or better: ensure the content itself is clean.
-    try:
-        pdf_output = pdf.output(dest='S').encode('latin-1')
-    except UnicodeEncodeError:
-        # Fallback if there are characters FPDF core fonts can't handle
-        pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
-    
-    b64 = base64.b64encode(pdf_output).decode()
-    href = f'<a href="data:application/pdf;base64,{b64}" download="answer_sheet.pdf">Download Answer Sheet (OMR)</a>'
-    st.markdown(href, unsafe_allow_html=True)
-    st.success("Answer Sheet Generated!")
+    if versions:
+        # Batch Generation for Master
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for v in versions:
+                v_key = json.loads(v[3])
+                pdf = create_sheet(len(v_key), v[1], v[4], question_data=v_key)
+                pdf_bytes = pdf.output(dest='S').encode('latin-1', errors='replace')
+                zip_file.writestr(f"{v[1]}_answer_sheet.pdf", pdf_bytes)
+        
+        b64 = base64.b64encode(zip_buffer.getvalue()).decode()
+        href = f'<a href="data:application/zip;base64,{b64}" download="shuffled_sheets.zip">Download All Sheets (ZIP)</a>'
+        st.markdown(href, unsafe_allow_html=True)
+        st.success("Batch ZIP Generated!")
+    else:
+        # Single Generation
+        q_data = st.session_state.get('gen_question_data')
+        pdf = create_sheet(num_q, exam_title, mcq_choices, question_data=q_data)
+        try:
+            pdf_output = pdf.output(dest='S').encode('latin-1')
+        except UnicodeEncodeError:
+            pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
+        
+        b64 = base64.b64encode(pdf_output).decode()
+        href = f'<a href="data:application/pdf;base64,{b64}" download="answer_sheet.pdf">Download Answer Sheet</a>'
+        st.markdown(href, unsafe_allow_html=True)
+        st.success("Answer Sheet Generated!")
 
 if st.button("Generate Question Booklet"):
-    q_data = st.session_state.get('gen_question_data')
-    if q_data and isinstance(next(iter(q_data.values())), dict) and "text" in next(iter(q_data.values())):
-        pdf = create_booklet(q_data, exam_title)
-        try:
-            pdf_output = pdf.output(dest='S').encode('latin-1')
-        except UnicodeEncodeError:
-            pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
-            
-        b64 = base64.b64encode(pdf_output).decode()
-        href = f'<a href="data:application/pdf;base64,{b64}" download="question_booklet.pdf">Download Question Booklet</a>'
+    versions = st.session_state.get('gen_versions', [])
+    
+    if versions:
+        # Batch Generation for Master
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for v in versions:
+                v_key = json.loads(v[3])
+                if v_key and isinstance(next(iter(v_key.values())), dict) and "text" in next(iter(v_key.values())):
+                    pdf = create_booklet(v_key, v[1])
+                    pdf_bytes = pdf.output(dest='S').encode('latin-1', errors='replace')
+                    zip_file.writestr(f"{v[1]}_booklet.pdf", pdf_bytes)
+        
+        b64 = base64.b64encode(zip_buffer.getvalue()).decode()
+        href = f'<a href="data:application/zip;base64,{b64}" download="shuffled_booklets.zip">Download All Booklets (ZIP)</a>'
         st.markdown(href, unsafe_allow_html=True)
-        st.success("Question Booklet Generated!")
+        st.success("Batch ZIP Generated!")
     else:
-        st.error("This exam does not have question text stored (likely created manually). Booklet generation is only supported for GIFT imports.")
+        # Single Generation
+        q_data = st.session_state.get('gen_question_data')
+        if q_data and isinstance(next(iter(q_data.values())), dict) and "text" in next(iter(q_data.values())):
+            pdf = create_booklet(q_data, exam_title)
+            try:
+                pdf_output = pdf.output(dest='S').encode('latin-1')
+            except UnicodeEncodeError:
+                pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
+                
+            b64 = base64.b64encode(pdf_output).decode()
+            href = f'<a href="data:application/pdf;base64,{b64}" download="question_booklet.pdf">Download Question Booklet</a>'
+            st.markdown(href, unsafe_allow_html=True)
+            st.success("Question Booklet Generated!")
+        else:
+            st.error("This exam does not have question text stored.")
 
 if st.button("Generate Answer Key PDF"):
-    q_data = st.session_state.get('gen_question_data')
-    if q_data:
-        pdf = create_answer_key_pdf(q_data, exam_title)
-        try:
-            pdf_output = pdf.output(dest='S').encode('latin-1')
-        except UnicodeEncodeError:
-            pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
-            
-        b64 = base64.b64encode(pdf_output).decode()
-        href = f'<a href="data:application/pdf;base64,{b64}" download="answer_key.pdf">Download Answer Key</a>'
+    versions = st.session_state.get('gen_versions', [])
+    
+    if versions:
+        # Batch Generation for Master
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for v in versions:
+                v_key = json.loads(v[3])
+                pdf = create_answer_key_pdf(v_key, v[1])
+                pdf_bytes = pdf.output(dest='S').encode('latin-1', errors='replace')
+                zip_file.writestr(f"{v[1]}_answer_key.pdf", pdf_bytes)
+        
+        b64 = base64.b64encode(zip_buffer.getvalue()).decode()
+        href = f'<a href="data:application/zip;base64,{b64}" download="answer_keys.zip">Download All Answer Keys (ZIP)</a>'
         st.markdown(href, unsafe_allow_html=True)
-        st.success("Answer Key PDF Generated!")
+        st.success("Batch ZIP Generated!")
     else:
-        st.error("Please load an exam first.")
+        # Single Generation
+        q_data = st.session_state.get('gen_question_data')
+        if q_data:
+            pdf = create_answer_key_pdf(q_data, exam_title)
+            try:
+                pdf_output = pdf.output(dest='S').encode('latin-1')
+            except UnicodeEncodeError:
+                pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
+                
+            b64 = base64.b64encode(pdf_output).decode()
+            href = f'<a href="data:application/pdf;base64,{b64}" download="answer_key.pdf">Download Answer Key</a>'
+            st.markdown(href, unsafe_allow_html=True)
+            st.success("Answer Key PDF Generated!")
+        else:
+            st.error("Please load an exam first.")
