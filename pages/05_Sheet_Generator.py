@@ -253,10 +253,10 @@ def create_booklet(question_data, exam_name="Exam"):
         q_text = q['text']
         q_text = re.sub(r'^::.*?::\s*', '', q_text)
             
-        pdf.set_font("Helvetica", 'B', 8)
-        pdf.multi_cell(0, 4, clean_text(f" Domanda {q_num}: {q_text}"))
+        pdf.set_font("Helvetica", 'B', 9)
+        pdf.multi_cell(0, 4, clean_text(f" {q_num}) {q_text}"))
         
-        pdf.set_font("Helvetica", size=8) # Match question size
+        pdf.set_font("Helvetica", size=9) # Match question size
         if q["type"] == "MCQ" and "options" in q:
             for i, opt in enumerate(q["options"]):
                 letter = chr(65 + i)
