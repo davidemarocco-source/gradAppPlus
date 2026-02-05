@@ -136,7 +136,7 @@ def create_exam(name, class_id, date, answer_key, mcq_choices=5, parent_id=None)
 
 def get_exams_by_class(class_id):
     conn = get_connection()
-    res = conn.query("SELECT id, name, date FROM exams WHERE class_id=:id", params={"id": class_id}, ttl=0)
+    res = conn.query("SELECT id, name, date, parent_id FROM exams WHERE class_id=:id", params={"id": class_id}, ttl=0)
     return res.values.tolist()
 
 def get_exam_details(exam_id):
@@ -175,6 +175,8 @@ def delete_class(class_id):
         s.execute(text("DELETE FROM results WHERE student_id IN (SELECT id FROM students WHERE class_id=:id)"), {"id": class_id})
         s.execute(text("DELETE FROM results WHERE exam_id IN (SELECT id FROM exams WHERE class_id=:id)"), {"id": class_id})
         s.execute(text("DELETE FROM students WHERE class_id=:id"), {"id": class_id})
+        # Delete version exams first to satisfy foreign key constraints
+        s.execute(text("DELETE FROM exams WHERE class_id=:id AND parent_id IS NOT NULL"), {"id": class_id})
         s.execute(text("DELETE FROM exams WHERE class_id=:id"), {"id": class_id})
         s.execute(text("DELETE FROM classes WHERE id=:id"), {"id": class_id})
         s.commit()
@@ -182,7 +184,16 @@ def delete_class(class_id):
 def delete_exam(exam_id):
     conn = get_connection()
     with conn.session as s:
+        # 1. Delete results for all versions of this exam (if it's a master)
+        s.execute(text("DELETE FROM results WHERE exam_id IN (SELECT id FROM exams WHERE parent_id=:id)"), {"id": exam_id})
+        
+        # 2. Delete the versions themselves
+        s.execute(text("DELETE FROM exams WHERE parent_id=:id"), {"id": exam_id})
+        
+        # 3. Delete results for this specific exam
         s.execute(text("DELETE FROM results WHERE exam_id=:id"), {"id": exam_id})
+        
+        # 4. Finally delete the exam itself
         s.execute(text("DELETE FROM exams WHERE id=:id"), {"id": exam_id})
         s.commit()
 
