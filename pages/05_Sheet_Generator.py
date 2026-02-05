@@ -49,9 +49,21 @@ with st.sidebar:
                 if exam_details:
                     answer_key = json.loads(exam_details[4])
                     st.session_state['gen_exam_name'] = exam_details[1]
-                    st.session_state['gen_num_q'] = len(answer_key)
+                    st.session_state['gen_num_q'] = max(1, len(answer_key))
                     st.session_state['gen_mcq_choices'] = exam_details[5]
                     st.session_state['gen_question_data'] = answer_key # Store types
+                    
+                    # If this is a master, also load its versions
+                    if "(Master)" in exam_details[1]:
+                        versions_list = db_manager.get_exam_versions(exam_options[sel_exam_name])
+                        st.session_state['gen_versions'] = versions_list
+                        # If the master is empty, try to set defaults from the first version
+                        if len(answer_key) == 0 and versions_list:
+                            v1_key = json.loads(versions_list[0][3])
+                            st.session_state['gen_num_q'] = len(v1_key)
+                            st.session_state['gen_mcq_choices'] = versions_list[0][4]
+                    else:
+                        st.session_state['gen_versions'] = []
                     # Clear redirect state once handled
                     if 'selected_exam_id' in st.session_state:
                         del st.session_state['selected_exam_id']
@@ -295,8 +307,24 @@ default_num_q = st.session_state.get('gen_num_q', 20)
 default_choices = st.session_state.get('gen_mcq_choices', 5)
 
 exam_title = st.text_input("Exam Name for Header", value=default_name)
-num_q = st.number_input("Number of Questions", 1, 100, value=default_num_q)
+num_q = st.number_input("Number of Questions", 1, 100, value=max(1, int(default_num_q)))
 mcq_choices = st.number_input("MCQ Choices (2-5)", 2, 5, value=default_choices)
+
+# If versions are available, show them
+if st.session_state.get('gen_versions'):
+    st.info("💡 Tip: This is a Master exam. You can select a specific version below to pre-fill its key and title.")
+    version_opts = {v[1]: v for v in st.session_state['gen_versions']}
+    sel_v_name = st.selectbox("Switch to Version", ["-- Select Version --"] + list(version_opts.keys()))
+    if sel_v_name != "-- Select Version --":
+        v = version_opts[sel_v_name]
+        v_key = json.loads(v[3])
+        st.session_state['gen_exam_name'] = v[1]
+        st.session_state['gen_num_q'] = len(v_key)
+        st.session_state['gen_mcq_choices'] = v[4]
+        st.session_state['gen_question_data'] = v_key
+        # Clear versions to prevent loop or keep them? Clear just once.
+        del st.session_state['gen_versions']
+        st.rerun()
 
 if st.button("Generate Answer Sheet"):
     q_data = st.session_state.get('gen_question_data')
