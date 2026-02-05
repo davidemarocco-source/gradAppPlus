@@ -4,6 +4,7 @@ import datetime
 import json
 import gift_parser
 import io
+import numpy as np
 
 st.set_page_config(page_title="Manage Exams", page_icon="📝")
 
@@ -128,8 +129,8 @@ else:
     if exams:
         # Separate master exams (or independent ones) from versions
         # Use a more robust check for None/NaN
-        masters = [e for e in exams if e[3] is None or (isinstance(e[3], float) and np.isnan(e[3]))]
-        versions = [e for e in exams if e[3] is not None and not (isinstance(e[3], float) and np.isnan(e[3]))]
+        masters = [e for e in exams if e[3] is None or (isinstance(e[3], (float, int)) and np.isnan(float(e[3])))]
+        versions = [e for e in exams if e[3] is not None and not (isinstance(e[3], (float, int)) and np.isnan(float(e[3])))]
         
         for ex in masters:
             with st.expander(f"📁 {ex[1]} ({ex[2]})"):

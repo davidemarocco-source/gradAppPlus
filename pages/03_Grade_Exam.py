@@ -32,7 +32,7 @@ if not exams:
 # Filter: Hide individual versions from the main grading dropdown.
 # Users should pick the "Master" or an independent exam.
 # ex[3] is the parent_id
-top_level_exams = [e for e in exams if e[3] is None or (isinstance(e[3], float) and np.isnan(e[3]))]
+top_level_exams = [e for e in exams if e[3] is None or (isinstance(e[3], (float, int)) and np.isnan(float(e[3])))]
 
 if not top_level_exams:
     st.warning("No masters or independent exams found.")
