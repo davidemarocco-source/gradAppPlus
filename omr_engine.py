@@ -137,7 +137,7 @@ def find_marker_squares(image):
     cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = cnts[0] if len(cnts) == 2 else cnts[1]
     
-    markers = []
+    markers = [] # List of (area, [cX, cY])
     img_area = image.shape[0] * image.shape[1]
     
     for c in cnts:
@@ -150,24 +150,23 @@ def find_marker_squares(image):
         # Extent: ratio of contour area to bounding box area (should be ~1.0 for a square)
         extent = area / float(w * h) if w * h > 0 else 0
         
-        # Markers are roughly 10x10mm. On a typical 1080p scan (~300dpi), that's ~120px.
-        # We look for solid squares that aren't too small or too large.
+        # Markers are roughly 10x10mm.
         if len(approx) == 4 and 0.8 <= ar <= 1.2 and extent > 0.8:
             if area > (img_area * 0.0005) and area < (img_area * 0.02):
                 M = cv2.moments(c)
                 if M["m00"] != 0:
                     cX = int(M["m10"] / M["m00"])
                     cY = int(M["m01"] / M["m00"])
-                    markers.append([cX, cY])
+                    markers.append((area, [cX, cY]))
                     
     if len(markers) < 4:
         return None
         
-    # If more than 4, take the 4 most symmetric ones (largest area usually)
-    if len(markers) > 4:
-        markers = markers[:4] # Simplify for now
+    # Sort by area descending and take top 4
+    markers.sort(key=lambda x: x[0], reverse=True)
+    top_markers = [m[1] for m in markers[:4]]
         
-    return order_points(np.array(markers))
+    return order_points(np.array(top_markers))
 
 def sample_bubble_hybrid(warped_gray, ideal_px, ideal_py, search_r=6, sample_r=5):
     """
@@ -297,7 +296,7 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
     
     # --- 1b. Process Version (A-E) ---
     v_start_x = 110
-    v_start_y = 30
+    v_start_y = 40 # Sync with Generator (Moved down)
     v_intensities = []
     v_centers = []
     for r in range(5):
