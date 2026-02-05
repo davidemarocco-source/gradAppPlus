@@ -232,6 +232,41 @@ def create_booklet(question_data, exam_name="Exam"):
         
     return pdf
 
+def create_answer_key_pdf(question_data, exam_name="Exam"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", 'B', 14)
+    pdf.cell(0, 10, f"Answer Key: {clean_text(exam_name)}", ln=True, align='C')
+    pdf.ln(5)
+    
+    pdf.set_font("Helvetica", size=11)
+    
+    # Sort questions by number
+    sorted_q_nums = sorted([int(k) for k in question_data.keys()])
+    
+    # Use a multi-column layout for the answer key to keep it compact
+    col_width = 45
+    for i, q_num in enumerate(sorted_q_nums):
+        q = question_data[str(q_num)]
+        if not isinstance(q, dict):
+            continue
+            
+        ans = q.get("ans", "N/A")
+        q_type = q.get("type", "MCQ")
+        
+        text = f"{q_num}. {ans}"
+        if q_type == "Numeric":
+            text = f"{q_num}. [Num] {ans}"
+            
+        # Basic manual column wrapping
+        x = 20 + ((i // 25) * col_width)
+        y = 30 + ((i % 25) * 8)
+        
+        pdf.set_xy(x, y)
+        pdf.cell(col_width, 8, clean_text(text))
+        
+    return pdf
+
 # Use session state for inputs if available
 default_name = st.session_state.get('gen_exam_name', "Midterm Exam")
 default_num_q = st.session_state.get('gen_num_q', 20)
@@ -274,3 +309,19 @@ if st.button("Generate Question Booklet"):
         st.success("Question Booklet Generated!")
     else:
         st.error("This exam does not have question text stored (likely created manually). Booklet generation is only supported for GIFT imports.")
+
+if st.button("Generate Answer Key PDF"):
+    q_data = st.session_state.get('gen_question_data')
+    if q_data:
+        pdf = create_answer_key_pdf(q_data, exam_title)
+        try:
+            pdf_output = pdf.output(dest='S').encode('latin-1')
+        except UnicodeEncodeError:
+            pdf_output = pdf.output(dest='S').encode('latin-1', errors='replace')
+            
+        b64 = base64.b64encode(pdf_output).decode()
+        href = f'<a href="data:application/pdf;base64,{b64}" download="answer_key.pdf">Download Answer Key</a>'
+        st.markdown(href, unsafe_allow_html=True)
+        st.success("Answer Key PDF Generated!")
+    else:
+        st.error("Please load an exam first.")
