@@ -152,7 +152,32 @@ else:
                         # Allow seeing version structure
                         with st.expander(f"Details for {v[1]}"):
                             v_details = db_manager.get_exam_details(v[0])
-                            st.json(json.loads(v_details[4]))
+                            v_key = json.loads(v_details[4])
+                            st.json(v_key)
+                            
+                            # --- Version Parameter Editor ---
+                            numeric_qs = {k: q for k, q in v_key.items() if q.get("type") == "Numeric"}
+                            if numeric_qs:
+                                st.divider()
+                                st.subheader(f"✏️ Customize Numeric values for {v[1]}")
+                                updated_key = v_key.copy()
+                                has_changes = False
+                                
+                                for q_num, q_data in numeric_qs.items():
+                                    st.write(f"**Question {q_num}**")
+                                    new_text = st.text_area(f"Question Text", value=q_data.get("text", ""), key=f"edit_text_{v[0]}_{q_num}")
+                                    new_ans = st.number_input(f"Correct Answer", value=float(q_data.get("ans", 0)), key=f"edit_ans_{v[0]}_{q_num}")
+                                    
+                                    if new_text != q_data.get("text") or new_ans != q_data.get("ans"):
+                                        updated_key[q_num]["text"] = new_text
+                                        updated_key[q_num]["ans"] = new_ans
+                                        has_changes = True
+                                
+                                if st.button("💾 Save Changes to this Version", key=f"save_v_{v[0]}"):
+                                    db_manager.update_exam(v[0], answer_key=updated_key)
+                                    st.success(f"Updated parameters for {v[1]}!")
+                                    st.rerun()
+
                     st.divider()
                 else:
                     st.json(json.loads(details[4]))
