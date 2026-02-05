@@ -127,8 +127,9 @@ else:
     exams = db_manager.get_exams_by_class(class_options[selected_view_class])
     if exams:
         # Separate master exams (or independent ones) from versions
-        masters = [e for e in exams if e[3] is None]
-        versions = [e for e in exams if e[3] is not None]
+        # Use a more robust check for None/NaN
+        masters = [e for e in exams if e[3] is None or (isinstance(e[3], float) and np.isnan(e[3]))]
+        versions = [e for e in exams if e[3] is not None and not (isinstance(e[3], float) and np.isnan(e[3]))]
         
         for ex in masters:
             with st.expander(f"📁 {ex[1]} ({ex[2]})"):
@@ -147,6 +148,10 @@ else:
                             if st.button("🗑️", key=f"del_v_{v[0]}", help="Delete this version only"):
                                 db_manager.delete_exam(v[0])
                                 st.rerun()
+                        # Allow seeing version structure
+                        with st.expander(f"Details for {v[1]}"):
+                            v_details = db_manager.get_exam_details(v[0])
+                            st.json(json.loads(v_details[4]))
                     st.divider()
                 else:
                     st.json(json.loads(details[4]))
