@@ -27,26 +27,37 @@ with tab1:
     classes = db_manager.get_all_classes()
     if classes:
         for cls_id, cls_name in classes:
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.write(f"**{cls_name}**")
-            with col2:
-                if st.button("🗑️ Delete", key=f"del_cls_{cls_id}"):
-                    st.session_state[f"confirm_delete_cls_{cls_id}"] = True
-            
-            if st.session_state.get(f"confirm_delete_cls_{cls_id}"):
-                st.warning(f"Are you sure you want to delete '{cls_name}'? This will delete all its students, exams, and results!")
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button("Yes, Delete Everything", key=f"force_del_cls_{cls_id}"):
-                        db_manager.delete_class(cls_id)
-                        del st.session_state[f"confirm_delete_cls_{cls_id}"]
-                        st.success(f"Class '{cls_name}' deleted.")
-                        st.rerun()
-                with c2:
-                    if st.button("Cancel", key=f"cancel_del_cls_{cls_id}"):
-                        del st.session_state[f"confirm_delete_cls_{cls_id}"]
-                        st.rerun()
+            with st.expander(f"🏫 {cls_name}", expanded=False):
+                col_c1, col_c2 = st.columns([4, 1])
+                with col_c1:
+                    st.write(f"Class ID: `{cls_id}`")
+                with col_c2:
+                    if st.button("🗑️ Delete", key=f"del_cls_{cls_id}"):
+                        st.session_state[f"confirm_delete_cls_{cls_id}"] = True
+                
+                # Student List for this class
+                st.subheader("Students")
+                students = db_manager.get_students_by_class(cls_id)
+                if students:
+                    df_students = pd.DataFrame(students, columns=["DB_ID", "Name", "Edu ID", "OMR ID"])
+                    df_students.insert(0, "No.", range(len(df_students)))
+                    st.dataframe(df_students[["No.", "Name", "Edu ID", "OMR ID"]], hide_index=True)
+                else:
+                    st.info("No students in this class.")
+
+                if st.session_state.get(f"confirm_delete_cls_{cls_id}"):
+                    st.warning(f"Are you sure you want to delete '{cls_name}'? This will delete all its students, exams, and results!")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("Yes, Delete Everything", key=f"force_del_cls_{cls_id}"):
+                            db_manager.delete_class(cls_id)
+                            del st.session_state[f"confirm_delete_cls_{cls_id}"]
+                            st.success(f"Class '{cls_name}' deleted.")
+                            st.rerun()
+                    with c2:
+                        if st.button("Cancel", key=f"cancel_del_cls_{cls_id}"):
+                            del st.session_state[f"confirm_delete_cls_{cls_id}"]
+                            st.rerun()
             st.divider()
     else:
         st.info("No classes found.")

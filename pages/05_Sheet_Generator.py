@@ -3,6 +3,7 @@ from fpdf import FPDF
 import base64
 import db_manager
 import json
+import re
 
 st.set_page_config(page_title="Generate Sheet", page_icon="🖨️")
 st.title("🖨️ Answer Sheet Generator")
@@ -198,11 +199,11 @@ def create_booklet(question_data, exam_name="Exam"):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Helvetica", 'B', 16)
+    pdf.set_font("Helvetica", 'B', 14) # Slightly smaller header
     pdf.cell(0, 10, clean_text(exam_name), ln=True, align='C')
-    pdf.ln(10)
+    pdf.ln(5) # Reduced space
     
-    pdf.set_font("Helvetica", size=11)
+    pdf.set_font("Helvetica", size=10) # Smaller base font
     
     # Sort questions by number
     sorted_q_nums = sorted([int(k) for k in question_data.keys()])
@@ -212,19 +213,23 @@ def create_booklet(question_data, exam_name="Exam"):
         if not isinstance(q, dict) or "text" not in q:
             continue
             
-        pdf.set_font("Helvetica", 'B', 11)
-        pdf.multi_cell(0, 7, clean_text(f"Question {q_num}: {q['text']}"))
-        pdf.ln(2)
+        # Strip GIFT titles like ::Some Title::
+        q_text = q['text']
+        q_text = re.sub(r'^::.*?::\s*', '', q_text)
+            
+        pdf.set_font("Helvetica", 'B', 10)
+        pdf.multi_cell(0, 5, clean_text(f" Domanda {q_num}: {q_text}"))
+        # pdf.ln(1) # Minimal space
         
-        pdf.set_font("Helvetica", size=10)
+        pdf.set_font("Helvetica", size=9) # Even smaller for options
         if q["type"] == "MCQ" and "options" in q:
             for i, opt in enumerate(q["options"]):
                 letter = chr(65 + i)
-                pdf.multi_cell(0, 6, clean_text(f"  {letter}) {opt}"))
+                pdf.multi_cell(0, 4.5, clean_text(f"  {letter}) {opt}"))
         elif q["type"] == "Numeric":
-            pdf.multi_cell(0, 6, "  (Write your numerical answer in the box on the answer sheet)")
+            pdf.multi_cell(0, 4.5, "(Scrivi la risposta numerica nel box sul foglio delle risposte)")
             
-        pdf.ln(5)
+        pdf.ln(3) # Reduced space between questions
         
     return pdf
 
