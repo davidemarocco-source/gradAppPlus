@@ -29,8 +29,17 @@ if not exams:
     st.warning("No exams for this class.")
     st.stop()
     
-exam_opts = {f"{e[1]} ({e[2]})": e[0] for e in exams}
-selected_exam_label = st.selectbox("Select Exam", list(exam_opts.keys()))
+# Filter: Hide individual versions from the main grading dropdown.
+# Users should pick the "Master" or an independent exam.
+# ex[3] is the parent_id
+top_level_exams = [e for e in exams if e[3] is None]
+
+if not top_level_exams:
+    st.warning("No masters or independent exams found.")
+    st.stop()
+
+exam_opts = {f"{e[1]} ({e[2]})": e[0] for e in top_level_exams}
+selected_exam_label = st.selectbox("Select Exam to Grade", list(exam_opts.keys()))
 selected_exam_id = exam_opts[selected_exam_label]
 
 # Load Exam Details (Key)

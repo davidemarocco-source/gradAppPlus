@@ -126,15 +126,37 @@ if selected_view_class == "All":
 else:
     exams = db_manager.get_exams_by_class(class_options[selected_view_class])
     if exams:
-        for ex in exams:
-            with st.expander(f"{ex[1]} ({ex[2]})"):
+    exams = db_manager.get_exams_by_class(class_options[selected_view_class])
+    if exams:
+        # Separate master exams (or independent ones) from versions
+        masters = [e for e in exams if e[3] is None]
+        versions = [e for e in exams if e[3] is not None]
+        
+        for ex in masters:
+            with st.expander(f"📁 {ex[1]} ({ex[2]})"):
                 details = db_manager.get_exam_details(ex[0])
-                st.json(json.loads(details[4]))
+                
+                # Check for versions
+                sub_versions = [v for v in versions if v[3] == ex[0]]
+                
+                if sub_versions:
+                    st.write("**This is a Master Exam with following versions:**")
+                    for v in sub_versions:
+                        col_v1, col_v2 = st.columns([3, 1])
+                        with col_v1:
+                            st.write(f"- {v[1]}")
+                        with col_v2:
+                            if st.button("🗑️", key=f"del_v_{v[0]}", help="Delete this version only"):
+                                db_manager.delete_exam(v[0])
+                                st.rerun()
+                    st.divider()
+                else:
+                    st.json(json.loads(details[4]))
                 
                 # --- Actions ---
                 col_ex1, col_ex2 = st.columns(2)
                 with col_ex1:
-                    if st.button("🖨️ Generate Sheet", key=f"gen_{ex[0]}"):
+                    if st.button("🖨️ Generate Sheets/Booklets", key=f"gen_{ex[0]}"):
                         st.session_state['selected_exam_id'] = ex[0]
                         st.session_state['selected_exam_class_id'] = class_options[selected_view_class]
                         answer_key = json.loads(details[4])
@@ -143,19 +165,38 @@ else:
                         st.switch_page("pages/05_Sheet_Generator.py")
                 
                 with col_ex2:
-                    if st.button("🗑️ Delete Exam", key=f"del_ex_{ex[0]}"):
+                    del_label = "🗑️ Delete Master & Versions" if sub_versions else "🗑️ Delete Exam"
+                    if st.button(del_label, key=f"del_ex_{ex[0]}"):
                         st.session_state[f"confirm_delete_ex_{ex[0]}"] = True
                 
                 if st.session_state.get(f"confirm_delete_ex_{ex[0]}"):
-                    st.warning(f"Are you sure you want to delete '{ex[1]}'? This will delete all its results!")
+                    warning_msg = f"Are you sure you want to delete '{ex[1]}'? "
+                    if sub_versions:
+                        warning_msg += "This will also delete ALL versions and their results!"
+                    else:
+                        warning_msg += "This will delete all its results!"
+                        
+                    st.warning(warning_msg)
                     c1, c2 = st.columns(2)
                     with c1:
-                        if st.button("Yes, Delete Exam", key=f"force_del_ex_{ex[0]}"):
+                        if st.button("Yes, Delete Everything", key=f"force_del_ex_{ex[0]}"):
                             db_manager.delete_exam(ex[0])
                             del st.session_state[f"confirm_delete_ex_{ex[0]}"]
-                            st.success(f"Exam '{ex[1]}' deleted.")
+                            st.success(f"Exam '{ex[1]}' and all versions deleted.")
                             st.rerun()
                     with c2:
                         if st.button("Cancel", key=f"cancel_del_ex_{ex[0]}"):
                             del st.session_state[f"confirm_delete_ex_{ex[0]}"]
                             st.rerun()
+                            
+        # If there are orphaned versions (shouldn't happen with current logic but good for robustness)
+        orphaned = [v for v in versions if v[3] not in [m[0] for m in masters]]
+        if orphaned:
+            st.divider()
+            st.subheader("Independent Versions")
+            for ex in orphaned:
+                with st.expander(f"{ex[1]} ({ex[2]})"):
+                    # (Standard deletion logic here if needed, but keeping it brief)
+                    if st.button("🗑️ Delete Orphaned Version", key=f"del_orph_{ex[0]}"):
+                        db_manager.delete_exam(ex[0])
+                        st.rerun()
