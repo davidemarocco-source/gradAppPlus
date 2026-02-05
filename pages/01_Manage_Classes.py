@@ -7,7 +7,7 @@ st.set_page_config(page_title="Manage Classes", page_icon="🏫")
 
 st.title("🏫 Manage Classes & Students")
 
-tab1, tab2, tab3 = st.tabs(["Create Class", "Add Students (Manual)", "Import Students (CSV)"])
+tab1, tab2, tab3, tab4 = st.tabs(["Create Class", "Add Students (Manual)", "Import Students (CSV)", "Quick ID Assignment"])
 
 # ----------------- CREATE CLASS -----------------
 with tab1:
@@ -208,3 +208,43 @@ with tab3:
                             
             except Exception as e:
                 st.error(f"Error parsing CSV: {e}")
+# ----------------- QUICK ID ASSIGNMENT -----------------
+with tab4:
+    st.header("📇 Quick OMR ID Assignment")
+    st.info("Use this to quickly assign OMR IDs to students (e.g., when handing out booklets).")
+    
+    classes = db_manager.get_all_classes()
+    if not classes:
+        st.warning("Please create a class first.")
+    else:
+        class_options_quick = {c[1]: c[0] for c in classes}
+        selected_class_name_quick = st.selectbox("Select Class", list(class_options_quick.keys()), key="quick_sel")
+        selected_class_id_quick = class_options_quick[selected_class_name_quick]
+        
+        students = db_manager.get_students_by_class(selected_class_id_quick)
+        
+        if students:
+            st.write("Enter the 3-digit OMR ID for each student:")
+            
+            # Using a form to avoid multiple reruns while typing
+            with st.form("id_assignment_form"):
+                new_ids = {}
+                for sid, name, eid, oid in students:
+                    col_n, col_i = st.columns([3, 1])
+                    with col_n:
+                        st.write(f"**{name}** ({eid})")
+                    with col_i:
+                        # Use 0 as default if no ID yet, but allow empty/None?
+                        current_val = oid if oid is not None else 0
+                        new_ids[sid] = st.number_input(f"ID", min_value=0, max_value=999, value=current_val, key=f"quick_id_{sid}", label_visibility="collapsed")
+                
+                if st.form_submit_button("💾 Save All Assignments"):
+                    success_count = 0
+                    for sid, val in new_ids.items():
+                        if db_manager.update_student_omr_id(sid, val):
+                            success_count += 1
+                    
+                    st.success(f"Successfully updated {success_count} student IDs!")
+                    st.rerun()
+        else:
+            st.info("No students in this class.")
