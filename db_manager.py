@@ -100,6 +100,16 @@ def add_student(name, educational_id, class_id, omr_id=None):
     except Exception:
         return None
 
+def update_student_omr_id(student_id, new_omr_id):
+    conn = get_connection()
+    try:
+        with conn.session as s:
+            s.execute(text("UPDATE students SET omr_id=:oid WHERE id=:sid"), {"oid": new_omr_id, "sid": student_id})
+            s.commit()
+        return True
+    except Exception:
+        return False
+
 def clear_class_students(class_id):
     conn = get_connection()
     try:
