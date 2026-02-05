@@ -199,7 +199,7 @@ def create_booklet(question_data, exam_name="Exam"):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Helvetica", 'B', 14) # Slightly smaller header
+    pdf.set_font("Helvetica", 'B', 10) # Slightly smaller header
     pdf.cell(0, 10, clean_text(exam_name), ln=True, align='C')
     pdf.ln(5) # Reduced space
     
