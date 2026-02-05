@@ -337,7 +337,8 @@ if st.button("Generate Answer Sheet"):
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
             for v in versions:
                 v_key = json.loads(v[3])
-                pdf = create_sheet(len(v_key), v[1], v[4], question_data=v_key)
+                # Use the 'mcq_choices' from the UI widget to allow overriding the stored value
+                pdf = create_sheet(len(v_key), v[1], mcq_choices, question_data=v_key)
                 pdf_bytes = pdf.output(dest='S').encode('latin-1', errors='replace')
                 zip_file.writestr(f"{v[1]}_answer_sheet.pdf", pdf_bytes)
         
