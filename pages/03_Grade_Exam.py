@@ -78,11 +78,19 @@ if input_method == "Upload Image":
 else:
     image_file = st.camera_input("Take a picture of the sheet")
 
+# --- Enhancement Settings ---
+st.sidebar.header("Scanning Settings")
+enable_bw = st.sidebar.toggle("B&W Enhancement", value=True, help="Applies a high-contrast filter to make paper whiter and ink blacker. Highly recommended for phone scans.")
+
 # --- Main Processing ---
 if image_file:
     # Convert to CV2
     file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
     image = cv2.imdecode(file_bytes, 1)
+    
+    # Apply B&W enhancement if requested
+    if enable_bw:
+        image = omr_engine.apply_bw_filter(image)
     
     # st.image(image, caption="Original Image", channels="BGR", use_container_width=True)
     
