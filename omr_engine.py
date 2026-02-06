@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import json
 
 def order_points(pts):
     """
@@ -61,126 +62,84 @@ def enhance_image(image):
 
 def apply_bw_filter(image):
     """
-    Applies a strong B&W filter (adaptive thresholding) to make the image
-    suitable for OMR: paper becomes white, ink becomes solid black.
-    """
-    # 1. Grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    # 2. Gaussian Blur to reduce noise
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    
-    # 3. Adaptive Thresholding
-    # We use ADAPTIVE_THRESH_GAUSSIAN_C to handle uneven lighting/shadows
-    # Block size 11 and C=2 are usually good defaults for documents
-    thresh = cv2.adaptiveThreshold(
-        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY, 11, 2
-    )
-    
-    # Convert back to BGR so it fits the expected 3-channel format of the rest of the pipeline
-    return cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
-
-def find_document_corners(image):
-    """
-    Find the 4 corners of the document in the image.
-    Tries multiple strategies for robust detection on mobile.
-    Returns (corners, debug_image)
+    Applies a high-contrast B&W filter. 
+    Uses CLAHE + soft thresholding to make markers/bubbles pop without losing all detail.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     
-    # Strategy 1: Canny Edges
-    edged = cv2.Canny(blurred, 75, 200)
+    # 1. CLAHE for local contrast
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8,8))
+    enhanced = clahe.apply(gray)
     
-    strategies = [
-        ("Canny", edged),
-        ("Otsu", cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]),
-        ("Adaptive", cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2))
-    ]
+    # 2. Linear Contrast Stretch
+    # Map [min, max] to [0, 255]
+    enhanced = cv2.normalize(enhanced, None, 0, 255, cv2.NORM_MINMAX)
     
-    best_approx = None
+    # 3. Soft Binary-ish look (Sigmoid-like curve)
+    # This makes whites whiter and blacks blacker but keeps some gray for the engine
+    lookUpTable = np.empty((1,256), np.uint8)
+    for i in range(256):
+        # Push values < 100 towards 0, > 150 towards 255
+        if i < 110:
+            lookUpTable[0,i] = max(0, i - 40)
+        elif i > 145:
+            lookUpTable[0,i] = min(255, i + 40)
+        else:
+            lookUpTable[0,i] = i
     
-    for name, processed in strategies:
-        cnts = cv2.findContours(processed.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-        
-        if len(cnts) > 0:
-            cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:5]
-            for c in cnts:
-                peri = cv2.arcLength(c, True)
-                approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-                
-                if len(approx) == 4 and cv2.contourArea(c) > (image.shape[0] * image.shape[1] * 0.2):
-                    return approx.reshape(4, 2), edged
-                
-                # Keep the largest 4-point contour even if it doesn't meet the area threshold yet
-                if len(approx) == 4 and (best_approx is None or cv2.contourArea(c) > cv2.contourArea(best_approx)):
-                    best_approx = approx
-                    
-    if best_approx is not None:
-        return best_approx.reshape(4, 2), edged
-                
-    return None, edged
-
-def pre_process_image(image):
-    """
-    Basic preprocessing pipeline
-    """
-    return enhance_image(image)
-
-def sort_contours(cnts, method="left-to-right"):
-    """
-    Sort contours based on the provided method.
-    """
-    reverse = False
-    i = 0
-    if method == "right-to-left" or method == "bottom-to-top":
-        reverse = True
-    if method == "top-to-bottom" or method == "bottom-to-top":
-        i = 1
-
-    boundingBoxes = [cv2.boundingRect(c) for c in cnts]
-    (cnts, boundingBoxes) = zip(*sorted(zip(cnts, boundingBoxes),
-        key=lambda b: b[1][i], reverse=reverse))
-        
-    return (cnts, boundingBoxes)
+    enhanced = cv2.LUT(enhanced, lookUpTable)
+    
+    return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
 
 def find_marker_squares(image):
     """
-    Finds the 4 black fiducial markers (10mm squares).
-    Returns the centers of the 4 markers in sorted order (TL, TR, BR, BL).
+    Finds the 4 black fiducial markers.
+    Tries multiple thresholding strategies for maximum robustness.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    # Use adaptive threshold to handle shadows
-    thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
     
-    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-    
-    markers = [] # List of (area, [cX, cY])
-    img_area = image.shape[0] * image.shape[1]
-    
-    for c in cnts:
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.04 * peri, True)
-        (x, y, w, h) = cv2.boundingRect(approx)
-        ar = w / float(h)
-        area = cv2.contourArea(c)
+    def get_markers_from_thresh(t_img):
+        cnts = cv2.findContours(t_img.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
         
-        # Extent: ratio of contour area to bounding box area (should be ~1.0 for a square)
-        extent = area / float(w * h) if w * h > 0 else 0
+        found = []
+        img_area = image.shape[0] * image.shape[1]
         
-        # Markers are roughly 10x10mm.
-        if len(approx) == 4 and 0.8 <= ar <= 1.2 and extent > 0.8:
-            if area > (img_area * 0.0005) and area < (img_area * 0.02):
-                M = cv2.moments(c)
-                if M["m00"] != 0:
-                    cX = int(M["m10"] / M["m00"])
-                    cY = int(M["m01"] / M["m00"])
-                    markers.append((area, [cX, cY]))
-                    
+        for c in cnts:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.04 * peri, True)
+            (x, y, w, h) = cv2.boundingRect(approx)
+            ar = w / float(h)
+            area = cv2.contourArea(c)
+            extent = area / float(w * h) if w * h > 0 else 0
+            
+            # Markers are squares: len=4, ar~1, extent~1
+            if len(approx) == 4 and 0.6 <= ar <= 1.4 and extent > 0.6:
+                # Area between 0.03% and 3% of image
+                if area > (img_area * 0.0003) and area < (img_area * 0.03):
+                    M = cv2.moments(c)
+                    if M["m00"] != 0:
+                        cX = int(M["m10"] / M["m00"])
+                        cY = int(M["m01"] / M["m00"])
+                        found.append((area, [cX, cY]))
+        return found
+
+    # Strategy 1: Adaptive (Good for camera & shadows)
+    # We use a larger block size (21) for better stability
+    thresh_adaptive = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 21, 5)
+    markers = get_markers_from_thresh(thresh_adaptive)
+    
+    # Strategy 2: Global Binary (Good for high-contrast/pre-processed)
+    if len(markers) < 4:
+        _, thresh_global = cv2.threshold(blurred, 120, 255, cv2.THRESH_BINARY_INV)
+        markers = get_markers_from_thresh(thresh_global)
+        
+    # Strategy 3: Otsu
+    if len(markers) < 4:
+        _, thresh_otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+        markers = get_markers_from_thresh(thresh_otsu)
+
     if len(markers) < 4:
         return None
         
@@ -192,39 +151,25 @@ def find_marker_squares(image):
 
 def sample_bubble_hybrid(warped_gray, ideal_px, ideal_py, search_r=6, sample_r=5):
     """
-    Turbo Version: Uses NumPy slicing for speed.
     Seeks the darkest point within search_r of (ideal_px, ideal_py).
     """
     h, w = warped_gray.shape
-    
-    best_px, best_py = ideal_px, ideal_py
-    min_val = 255
-    
-    # 1. Coordinate Seeking using NumPy slicing
     y_min, y_max = max(0, ideal_py - search_r), min(h, ideal_py + search_r + 1)
     x_min, x_max = max(0, ideal_px - search_r), min(w, ideal_px + search_r + 1)
     
-    # Extract neighborhood
     roi = warped_gray[y_min:y_max, x_min:x_max]
-    
-    # Find min value location in ROI using numpy
     if roi.size > 0:
         min_loc = np.unravel_index(np.argmin(roi, axis=None), roi.shape)
         best_py = y_min + min_loc[0]
         best_px = x_min + min_loc[1]
+    else:
+        best_px, best_py = ideal_px, ideal_py
                     
-    # 2. Final sample: simple square/circular average using slice
     sy_min, sy_max = max(0, best_py - sample_r), min(h, best_py + sample_r + 1)
     sx_min, sx_max = max(0, best_px - sample_r), min(w, best_px + sample_r + 1)
     
     final_avg = np.mean(warped_gray[sy_min:sy_max, sx_min:sx_max])
     return final_avg, (best_px, best_py)
-
-def get_answers_from_roi(roi, num_questions=5, choices=5):
-    """
-    Deprecated: Using coordinate-based sampling instead.
-    """
-    return {}
 
 def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None):
     """
@@ -234,7 +179,6 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
     if image is None:
         return {"success": False, "error": "Could not read image"}
         
-    # --- TURBO MODE: Downscale for faster marker detection ---
     h, w = image.shape[:2]
     max_dim = 1200
     scale = 1.0
@@ -244,19 +188,18 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
     else:
         small_img = image
 
-    # Find markers on small image
     small_corners = find_marker_squares(small_img)
     if small_corners is None:
+        # Debug image: Show edges
+        debug = cv2.Canny(cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY), 50, 150)
         return {
             "success": False, 
-            "error": "Could not find all 4 corner squares. Please ensure they are clearly visible in the camera view.",
-            "debug_image": cv2.Canny(cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY), 75, 200)
+            "error": "Could not find corner squares. Try better lighting or hold the camera closer.",
+            "debug_image": debug
         }
         
-    # Scale corners back to original size
     corners = small_corners / scale
         
-    # Calculate Sheet Top/Bottom bounds in MM - Sync with Generator
     if num_questions <= 12: num_cols = 1
     elif num_questions <= 24: num_cols = 2
     else: num_cols = 3
@@ -265,8 +208,7 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
     max_y_content = 115 + (questions_per_col * 10)
     bottom_y_mm = max_y_content + 10
     
-    # Use the marker box as the basis for warping
-    active_w_mm = 170 # 190 - 20
+    active_w_mm = 170 
     active_h_mm = (bottom_y_mm + 5) - 20
     
     w_target = 1000
@@ -280,18 +222,17 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
         
     M = cv2.getPerspectiveTransform(corners.astype("float32"), dst)
     warped = cv2.warpPerspective(image, M, (w_target, h_target))
-    warped_gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY) # One-time conversion
+    warped_gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY) 
             
     def to_px(mm_x, mm_y):
         return int(((mm_x - 20) / active_w_mm) * w_target), int(((mm_y - 20) / active_h_mm) * h_target)
         
     all_bubble_centers = []
     
-    # --- 1. Process Student ID (3 columns of digits 0-9) ---
+    # --- 1. Process Student ID ---
     id_start_x = 140
     id_start_y = 30 
     id_digits = []
-    
     for c in range(3):
         col_x = id_start_x + (c * 10) + 12
         intensities = []
@@ -302,12 +243,8 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
             intensity, center = sample_bubble_hybrid(warped_gray, px, py, search_r=5, sample_r=5)
             intensities.append(intensity)
             found_centers.append(center)
-            
         min_idx = np.argmin(intensities)
-        min_val = intensities[min_idx]
-        avg_val = np.mean(intensities)
-        
-        if min_val < (avg_val * 0.88):
+        if intensities[min_idx] < (np.mean(intensities) * 0.90):
             id_digits.append(str(min_idx))
             all_bubble_centers.append(found_centers[min_idx])
         else:
@@ -316,9 +253,9 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
     student_id_str = "".join(id_digits)
     omr_id = int(student_id_str) if "?" not in student_id_str else None
     
-    # --- 1b. Process Version (A-E) ---
+    # --- 1b. Process Version ---
     v_start_x = 110
-    v_start_y = 40 # Sync with Generator (Moved down)
+    v_start_y = 40 
     v_intensities = []
     v_centers = []
     for r in range(5):
@@ -327,43 +264,31 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
         intensity, center = sample_bubble_hybrid(warped_gray, px, py, search_r=5, sample_r=5)
         v_intensities.append(intensity)
         v_centers.append(center)
-        
     v_min_idx = np.argmin(v_intensities)
-    v_min_val = v_intensities[v_min_idx]
-    v_avg_val = np.mean(v_intensities)
-    
-    version_idx = None
-    if v_min_val < (v_avg_val * 0.88):
-        version_idx = v_min_idx
-        all_bubble_centers.append(v_centers[v_min_idx])
+    version_idx = v_min_idx if v_intensities[v_min_idx] < (np.mean(v_intensities) * 0.90) else None
+    if version_idx is not None:
+        all_bubble_centers.append(v_centers[version_idx])
     
     # --- 2. Process Answer Grid ---
-    questions_per_col = (num_questions + num_cols - 1) // num_cols
     grid_width_mm = num_cols * (80 if num_cols==1 else (75 if num_cols==2 else 60))
     x_base_start_mm = (210 - grid_width_mm) / 2
-    
     start_y_mm = 115 
     row_height_mm = 10
     bubble_spacing_mm = 9
-    
     final_answers = {}
     
     for c in range(num_cols):
         col_x_start = x_base_start_mm + (c * (80 if num_cols==1 else (75 if num_cols==2 else 60)))
         qs_in_this_col = min(questions_per_col, num_questions - (c * questions_per_col))
-        
         for q_idx in range(qs_in_this_col):
             abs_q_num = (c * questions_per_col) + q_idx + 1
+            if question_data and str(abs_q_num) in question_data:
+                q_info = question_data[str(abs_q_num)]
+                if isinstance(q_info, dict) and q_info.get("type") == "Numeric":
+                    continue
             
-            # Skip numeric questions for bubble detection
-            q_data = question_data.get(str(abs_q_num), {}) if question_data else {}
-            q_type = q_data.get("type", "MCQ") if isinstance(q_data, dict) else "MCQ"
-            if q_type == "Numeric":
-                continue
-                
             row_y_mm = start_y_mm + (q_idx * row_height_mm)
             by_mm = row_y_mm + (10 - 6.5) / 2
-            
             row_intensities = []
             found_centers = []
             for j in range(mcq_choices):
@@ -372,25 +297,21 @@ def process_exam(image_path, num_questions=20, mcq_choices=5, question_data=None
                 intensity, center = sample_bubble_hybrid(warped_gray, px, py, search_r=5, sample_r=6)
                 row_intensities.append(intensity)
                 found_centers.append(center)
-                
             min_idx = np.argmin(row_intensities)
-            min_val = row_intensities[min_idx]
-            avg_val = np.mean(row_intensities)
-            
-            if min_val < (avg_val * 0.90):
+            if row_intensities[min_idx] < (np.mean(row_intensities) * 0.92):
                 final_answers[abs_q_num] = min_idx
                 all_bubble_centers.append(found_centers[min_idx])
             
-    # DRAW VISUAL BUBBLES
+    # Draw results
     for (cx, cy) in all_bubble_centers:
-        cv2.circle(warped, (cx, cy), 14, (0, 255, 0), 2) # Outer ring
-        cv2.circle(warped, (cx, cy), 4, (0, 255, 0), -1) # Center dot
+        cv2.circle(warped, (cx, cy), 14, (0, 255, 0), 2)
+        cv2.circle(warped, (cx, cy), 4, (0, 255, 0), -1)
             
     return {
         "success": True,
         "warped_image": warped,
         "debug_image": None,
         "omr_id": omr_id,
-        "version_idx": version_idx, # 0=A, 1=B, etc.
+        "version_idx": version_idx,
         "answers": final_answers
     }
