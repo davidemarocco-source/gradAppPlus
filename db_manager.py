@@ -43,17 +43,20 @@ def init_db():
                         exam_id INTEGER REFERENCES exams(id),
                         student_id INTEGER REFERENCES students(id),
                         score DOUBLE PRECISION,
+                        mcq_score DOUBLE PRECISION DEFAULT 0,
+                        numeric_score DOUBLE PRECISION DEFAULT 0,
                         answers TEXT,
                         image_path TEXT,
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )'''))
         
-        # Migration: Add mcq_choices if it doesn't exist
+        # Migration: Add columns if they don't exist
         try:
             s.execute(text("ALTER TABLE exams ADD COLUMN IF NOT EXISTS mcq_choices INTEGER DEFAULT 5"))
             s.execute(text("ALTER TABLE exams ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES exams(id)"))
+            s.execute(text("ALTER TABLE results ADD COLUMN IF NOT EXISTS mcq_score DOUBLE PRECISION DEFAULT 0"))
+            s.execute(text("ALTER TABLE results ADD COLUMN IF NOT EXISTS numeric_score DOUBLE PRECISION DEFAULT 0"))
         except Exception:
-            # Column might already exist or DB might not support IF NOT EXISTS in ALTER (though Postgres does)
             pass
             
         s.commit()
@@ -171,17 +174,17 @@ def get_exam_versions(parent_id):
     return res.values.tolist()
 
 # --- Results ---
-def save_result(exam_id, student_id, score, answers, image_path):
+def save_result(exam_id, student_id, total_score, mcq_score, numeric_score, answers, image_path):
     conn = get_connection()
     answers_json = json.dumps(answers)
     with conn.session as s:
-        s.execute(text("INSERT INTO results (exam_id, student_id, score, answers, image_path) VALUES (:eid, :sid, :score, :ans, :path)"),
-                  {"eid": exam_id, "sid": student_id, "score": score, "ans": answers_json, "path": image_path})
+        s.execute(text("INSERT INTO results (exam_id, student_id, score, mcq_score, numeric_score, answers, image_path) VALUES (:eid, :sid, :score, :ms, :ns, :ans, :path)"),
+                  {"eid": exam_id, "sid": student_id, "score": total_score, "ms": mcq_score, "ns": numeric_score, "ans": answers_json, "path": image_path})
         s.commit()
 
 def get_results_by_exam(exam_id):
     conn = get_connection()
-    sql = '''SELECT r.id, r.student_id, s.name, s.educational_id, s.omr_id, r.score, e.name as exam_name
+    sql = '''SELECT r.id, r.student_id, s.name, s.educational_id, s.omr_id, r.score, r.mcq_score, r.numeric_score, e.name as exam_name
              FROM results r 
              JOIN students s ON r.student_id = s.id 
              JOIN exams e ON r.exam_id = e.id
@@ -191,7 +194,7 @@ def get_results_by_exam(exam_id):
 
 def get_results_by_master_exam(master_id):
     conn = get_connection()
-    sql = '''SELECT r.id, r.student_id, s.name, s.educational_id, s.omr_id, r.score, e.name as exam_name
+    sql = '''SELECT r.id, r.student_id, s.name, s.educational_id, s.omr_id, r.score, r.mcq_score, r.numeric_score, e.name as exam_name
              FROM results r 
              JOIN students s ON r.student_id = s.id 
              JOIN exams e ON r.exam_id = e.id
