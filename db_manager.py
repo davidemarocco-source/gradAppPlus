@@ -181,11 +181,22 @@ def save_result(exam_id, student_id, score, answers, image_path):
 
 def get_results_by_exam(exam_id):
     conn = get_connection()
-    sql = '''SELECT r.id, r.student_id, s.name, s.educational_id, s.omr_id, r.score 
+    sql = '''SELECT r.id, r.student_id, s.name, s.educational_id, s.omr_id, r.score, e.name as exam_name
              FROM results r 
              JOIN students s ON r.student_id = s.id 
+             JOIN exams e ON r.exam_id = e.id
              WHERE r.exam_id=:id'''
     res = conn.query(sql, params={"id": exam_id}, ttl=0)
+    return res.values.tolist()
+
+def get_results_by_master_exam(master_id):
+    conn = get_connection()
+    sql = '''SELECT r.id, r.student_id, s.name, s.educational_id, s.omr_id, r.score, e.name as exam_name
+             FROM results r 
+             JOIN students s ON r.student_id = s.id 
+             JOIN exams e ON r.exam_id = e.id
+             WHERE r.exam_id = :mid OR e.parent_id = :mid'''
+    res = conn.query(sql, params={"mid": master_id}, ttl=0)
     return res.values.tolist()
 
 # --- Deletions ---
