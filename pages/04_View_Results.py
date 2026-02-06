@@ -33,30 +33,32 @@ else:
 # results: id, student_id, name, educational_id, omr_id, score, exam_name
 
 if results:
-    df = pd.DataFrame(results, columns=["Result ID", "Student ID", "Name", "Edu ID", "OMR ID", "Score", "Exam/Version"])
+    df = pd.DataFrame(results, columns=["Result ID", "Student ID", "Name", "Edu ID", "OMR ID", "Total", "MCQ", "Num", "Exam/Version"])
     
     # Calculate stats
-    avg = df["Score"].mean()
+    avg = df["Total"].mean()
     st.metric("Average Score", f"{avg:.2f}")
     
     # Custom table with delete buttons
     st.write("---")
-    header_cols = st.columns([1, 2, 2, 1, 1, 2, 1])
-    header_labels = ["ID", "Name", "Edu ID", "OMR ID", "Score", "Exam/Version", "Action"]
+    header_cols = st.columns([1, 2, 2, 1, 1, 1, 1, 2, 1])
+    header_labels = ["ID", "Name", "Edu ID", "OID", "Tot", "MCQ", "Num", "Exam/Version", "Act"]
     for col, label in zip(header_cols, header_labels):
         col.write(f"**{label}**")
         
     for i, row in df.iterrows():
         res_id = row["Result ID"]
-        cols = st.columns([1, 2, 2, 1, 1, 2, 1])
+        cols = st.columns([1, 2, 2, 1, 1, 1, 1, 2, 1])
         cols[0].write(f"{res_id}")
         cols[1].write(f"{row['Name']}")
         cols[2].write(f"{row['Edu ID']}")
         cols[3].write(f"{row['OMR ID']}")
-        cols[4].write(f"{row['Score']}")
-        cols[5].write(f"{row['Exam/Version']}")
+        cols[4].write(f"{row['Total']}")
+        cols[5].write(f"{row['MCQ']}")
+        cols[6].write(f"{row['Num']}")
+        cols[7].write(f"{row['Exam/Version']}")
         
-        if cols[6].button("🗑️", key=f"del_res_{res_id}"):
+        if cols[8].button("🗑️", key=f"del_res_{res_id}"):
             db_manager.delete_result(res_id)
             st.success(f"Result {res_id} deleted.")
             st.rerun()

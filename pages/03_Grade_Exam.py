@@ -226,9 +226,25 @@ if 'scan_result' in st.session_state and st.session_state['scan_result']:
             
         st.metric("Score", f"{score} / {total}")
         
-        if st.button("Save Grade"):
+        # 4. Numeric Scoring (Manual)
+        has_numeric = any(v.get("type") == "Numeric" if isinstance(v, dict) else False for v in current_answer_key.values())
+        numeric_pts = 0.0
+        if has_numeric:
+            st.divider()
+            numeric_pts = st.number_input("Total Points for Numeric Questions", min_value=0.0, step=0.5, value=0.0)
+            st.write(f"**Final Total Score:** {score + numeric_pts}")
+
+        if st.button("Save Grade", use_container_width=True):
             # Use original student_id (either matched or selected from dropdown)
-            db_manager.save_result(current_exam_id, student_id, score, graded_details, "scan.jpg")
+            db_manager.save_result(
+                current_exam_id, 
+                student_id, 
+                score + numeric_pts, # Total
+                score,               # MCQ
+                numeric_pts,         # Numeric
+                graded_details, 
+                "scan.jpg"
+            )
             st.success("Saved to Database!")
             # Clear result after saving to prevent double submission
             st.session_state['scan_result'] = None
