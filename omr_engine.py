@@ -59,6 +59,28 @@ def enhance_image(image):
     enhanced = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
     return enhanced
 
+def apply_bw_filter(image):
+    """
+    Applies a strong B&W filter (adaptive thresholding) to make the image
+    suitable for OMR: paper becomes white, ink becomes solid black.
+    """
+    # 1. Grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    # 2. Gaussian Blur to reduce noise
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    
+    # 3. Adaptive Thresholding
+    # We use ADAPTIVE_THRESH_GAUSSIAN_C to handle uneven lighting/shadows
+    # Block size 11 and C=2 are usually good defaults for documents
+    thresh = cv2.adaptiveThreshold(
+        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY, 11, 2
+    )
+    
+    # Convert back to BGR so it fits the expected 3-channel format of the rest of the pipeline
+    return cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+
 def find_document_corners(image):
     """
     Find the 4 corners of the document in the image.
