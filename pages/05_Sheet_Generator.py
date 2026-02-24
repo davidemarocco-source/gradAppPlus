@@ -264,7 +264,7 @@ def create_booklet(question_data, exam_name="Exam"):
         elif q["type"] == "Numeric":
             pdf.multi_cell(0, 5, "(Scrivi la risposta numerica nel box sul foglio delle risposte)")
             
-        pdf.ln(2) # Reduced space between questions
+        pdf.ln(3) # Reduced space between questions
         
     return pdf
 
@@ -428,3 +428,4 @@ if st.button("Generate Answer Key PDF"):
             st.success("Answer Key PDF Generated!")
         else:
             st.error("Please load an exam first.")
+
