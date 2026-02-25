@@ -158,25 +158,25 @@ else:
                             # --- Version Parameter Editor ---
                             numeric_qs = {k: q for k, q in v_key.items() if q.get("type") == "Numeric"}
                             if numeric_qs:
-                                st.divider()
-                                st.subheader(f"✏️ Customize Numeric values for {v[1]}")
-                                updated_key = v_key.copy()
-                                has_changes = False
-                                
-                                for q_num, q_data in numeric_qs.items():
-                                    st.write(f"**Question {q_num}**")
-                                    new_text = st.text_area(f"Question Text", value=q_data.get("text", ""), key=f"edit_text_{v[0]}_{q_num}")
-                                    new_ans = st.number_input(f"Correct Answer", value=float(q_data.get("ans", 0)), key=f"edit_ans_{v[0]}_{q_num}")
+                                with st.form(key=f"edit_v_form_{v[0]}"):
+                                    st.subheader(f"✏️ Customize Numeric values for {v[1]}")
+                                    new_data = {}
                                     
-                                    if new_text != q_data.get("text") or new_ans != q_data.get("ans"):
-                                        updated_key[q_num]["text"] = new_text
-                                        updated_key[q_num]["ans"] = new_ans
-                                        has_changes = True
-                                
-                                if st.button("💾 Save Changes to this Version", key=f"save_v_{v[0]}"):
-                                    db_manager.update_exam(v[0], answer_key=updated_key)
-                                    st.success(f"Updated parameters for {v[1]}!")
-                                    st.rerun()
+                                    for q_num, q_data in numeric_qs.items():
+                                        st.write(f"**Question {q_num}**")
+                                        new_text = st.text_area(f"Question Text", value=q_data.get("text", ""), key=f"edit_text_{v[0]}_{q_num}")
+                                        new_ans = st.number_input(f"Correct Answer", value=float(q_data.get("ans", 0)), key=f"edit_ans_{v[0]}_{q_num}")
+                                        new_data[q_num] = {"text": new_text, "ans": new_ans}
+                                    
+                                    if st.form_submit_button("💾 Save Changes to this Version"):
+                                        updated_key = v_key.copy()
+                                        for q_num, data in new_data.items():
+                                            updated_key[q_num]["text"] = data["text"]
+                                            updated_key[q_num]["ans"] = data["ans"]
+                                            
+                                        db_manager.update_exam(v[0], answer_key=updated_key)
+                                        st.success(f"Updated parameters for {v[1]}!")
+                                        st.rerun()
 
                     st.divider()
                 else:
