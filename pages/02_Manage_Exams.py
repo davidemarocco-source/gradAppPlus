@@ -164,19 +164,34 @@ else:
                                     
                                     for q_num, q_data in numeric_qs.items():
                                         st.write(f"**Question {q_num}**")
+                                        # Use stable keys for widgets
                                         new_text = st.text_area(f"Question Text", value=q_data.get("text", ""), key=f"edit_text_{v[0]}_{q_num}")
                                         new_ans = st.number_input(f"Correct Answer", value=float(q_data.get("ans", 0)), key=f"edit_ans_{v[0]}_{q_num}")
                                         new_data[q_num] = {"text": new_text, "ans": new_ans}
                                     
                                     if st.form_submit_button("💾 Save Changes to this Version"):
-                                        updated_key = v_key.copy()
-                                        for q_num, data in new_data.items():
-                                            updated_key[q_num]["text"] = data["text"]
-                                            updated_key[q_num]["ans"] = data["ans"]
+                                        try:
+                                            # 1. Re-fetch current version state to ensure we have the most recent data
+                                            latest_details = db_manager.get_exam_details(v[0])
+                                            updated_key = json.loads(latest_details[4])
                                             
-                                        db_manager.update_exam(v[0], answer_key=updated_key)
-                                        st.success(f"Updated parameters for {v[1]}!")
-                                        st.rerun()
+                                            # 2. Update with new values from form
+                                            for qn, data in new_data.items():
+                                                # Handle potential string/int key inconsistency from JSON
+                                                target_key = str(qn)
+                                                if target_key not in updated_key and int(qn) in updated_key:
+                                                    target_key = int(qn)
+                                                
+                                                if target_key in updated_key:
+                                                    updated_key[target_key]["text"] = data["text"]
+                                                    updated_key[target_key]["ans"] = data["ans"]
+                                            
+                                            # 3. Save back to DB
+                                            db_manager.update_exam(v[0], answer_key=updated_key)
+                                            st.success(f"✅ Updated parameters for {v[1]}!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ Failed to save changes: {str(e)}")
 
                     st.divider()
                 else:
